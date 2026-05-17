@@ -1,4 +1,4 @@
-# Nexus Hand AI
+# Hand detections AI
 A modern, AI-powered hand detection and gesture recognition desktop application built with Python. Designed with a futuristic cyberpunk aesthetic and optimized for high performance and real-time processing.
 
 ##  Features
