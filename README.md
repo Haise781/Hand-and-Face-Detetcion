@@ -61,7 +61,7 @@ python main.py
 ```
 *Note: Make sure your webcam is connected and accessible.*
 
-## 🔮 Completed Core Features & Enhancements (Roadmap)
+## Completed Core Features & Enhancements (Roadmap)
 - [x] **Multi-user hand interaction mode**: Seamlessly tracks multiple hands concurrently and provides gesture logging and positional coordinate telemetry for all active users.
 - [x] **Virtual mouse control using hand gestures**: native system cursor tracking using an optimized virtual touchpad mapping. Move index finger to glide; pinch index and middle tips close to perform clicks and drag-and-drop actions.
 - [x] **3D holographic visual overlays**: Cybernetic heads-up display rendering perspective-projected 3D wireframe cubes, telemetry concentric tracking circles, coordinate links, and target locked brackets.
