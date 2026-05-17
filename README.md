@@ -61,7 +61,7 @@ python main.py
 ```
 *Note: Make sure your webcam is connected and accessible.*
 
-##  Future Enhancements (Roadmap)
+## Future Enhancements (Roadmap)
 - [ ] Multi-user hand interaction mode
 - [ ] Virtual mouse control using hand gestures
 - [ ] 3D holographic visual overlays
