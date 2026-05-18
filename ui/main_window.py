@@ -53,6 +53,10 @@ class CameraThread(QThread):
         self.hand_hud_mode = "3D Hologram" # Toggle: "3D Hologram" or "Standard Brackets"
         self.multi_user_mode = True
         self.last_alarm_time = 0
+        self.enable_wink_actions = True
+        self.enable_yawn_alerts = True
+        self.enable_drowsy_alerts = True
+        self.last_yawn_alarm_time = 0
 
     def run(self):
         cap = cv2.VideoCapture(self.camera_id)
@@ -143,20 +147,49 @@ class CameraThread(QThread):
                     active_faces = self.face_detector.find_faces(frame)
                     frame = self.effects.process_face_overlays(frame, active_faces)
                     
-                    # Log face blinks dynamically and play alarm if user is drowsy
+                    # Log face blinks/winks/yawns dynamically and execute HUD actions
                     for face in active_faces:
-                        if face.get("drowsy", False):
+                        if face.get("drowsy", False) and self.enable_drowsy_alerts:
                             now = time.time()
                             if now - self.last_alarm_time > 1.5:
                                 self.audio.play_sound_async("alarm")
                                 self.last_alarm_time = now
                                 action_logs.append("[SYS] CRITICAL: USER FATIGUE ALERT ENGAGED")
-                        elif face["left_blink"] and face["right_blink"]:
-                            action_logs.append(f"[SYS] NEURAL FEED: DUAL-BLINK DETECTED")
-                        elif face["left_blink"]:
-                            action_logs.append(f"[SYS] NEURAL FEED: LEFT-BLINK DETECTED")
-                        elif face["right_blink"]:
-                            action_logs.append(f"[SYS] NEURAL FEED: RIGHT-BLINK DETECTED")
+                        
+                        elif face.get("yawning", False) and self.enable_yawn_alerts:
+                            now = time.time()
+                            if now - self.last_yawn_alarm_time > 3.0:
+                                self.audio.play_sound_async("spell_cast")
+                                self.last_yawn_alarm_time = now
+                                action_logs.append("[SYS] NEURAL WARNING: HIGH FATIGUE - USER YAWNING DETECTED")
+                                
+                        else:
+                            # 1. Right Eye Wink theme switcher command
+                            if face.get("right_wink_triggered", False) and self.enable_wink_actions:
+                                self.audio.play_sound_async("ui_nav")
+                                current = self.effects.current_theme
+                                themes = list(self.effects.themes.keys())
+                                next_idx = (themes.index(current) + 1) % len(themes)
+                                next_theme = themes[next_idx]
+                                self.effects.set_theme(next_theme)
+                                action_logs.append(f"[SYS] EYE COMMAND: SYNCING HUD THEME -> {next_theme.upper()}")
+                            
+                            # 2. Left Eye Wink camera snapshot command
+                            elif face.get("left_wink_triggered", False) and self.enable_wink_actions:
+                                self.audio.play_sound_async("snap")
+                                os.makedirs("screenshots", exist_ok=True)
+                                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                filename = f"screenshots/snap_wink_{timestamp}.png"
+                                cv2.imwrite(filename, frame)
+                                action_logs.append(f"[SYS] EYE COMMAND: NEURAL SCAN SNAPSHOT SAVED TO {filename}")
+                                
+                            # 3. Log normal blinks
+                            elif face["left_blink"] and face["right_blink"]:
+                                action_logs.append(f"[SYS] NEURAL FEED: DUAL-BLINK DETECTED")
+                            elif face["left_blink"]:
+                                action_logs.append(f"[SYS] NEURAL FEED: LEFT-BLINK DETECTED")
+                            elif face["right_blink"]:
+                                action_logs.append(f"[SYS] NEURAL FEED: RIGHT-BLINK DETECTED")
                 
                 # 3. Handle Virtual Mouse (tracked primarily via hand 0 index tip)
                 mouse_status = "Inactive"
@@ -278,6 +311,11 @@ class MainWindow(QMainWindow):
         self.tab_plugins = QWidget()
         self.setup_plugins_tab()
         self.tabs.addTab(self.tab_plugins, "PLUGINS")
+        
+        # Tab 6: Neural Face Commands
+        self.tab_face_commands = QWidget()
+        self.setup_face_commands_tab()
+        self.tabs.addTab(self.tab_face_commands, "NEURAL CMD")
         
         # bottom actions
         right_layout.addSpacing(15)
@@ -471,6 +509,69 @@ class MainWindow(QMainWindow):
         self.btn_refresh_plugins.clicked.connect(self.reload_plugins)
         layout.addWidget(self.btn_refresh_plugins)
 
+    def setup_face_commands_tab(self):
+        layout = QVBoxLayout(self.tab_face_commands)
+        
+        # AR Filters group
+        ar_group = QGroupBox("COGNITIVE AR FACE FILTER")
+        ar_layout = QVBoxLayout(ar_group)
+        self.combo_face_filter = QComboBox()
+        self.combo_face_filter.addItems(["Tactical Visor", "Neon Circuit", "Lock Reticle", "None"])
+        self.combo_face_filter.currentTextChanged.connect(self.change_face_filter)
+        ar_layout.addWidget(QLabel("Select Active AR Overlay:"))
+        ar_layout.addWidget(self.combo_face_filter)
+        layout.addWidget(ar_group)
+        
+        # Dynamic gesture triggers group
+        triggers_group = QGroupBox("NEURAL TRIGGER SETTINGS")
+        triggers_layout = QVBoxLayout(triggers_group)
+        
+        self.chk_wink_actions = QCheckBox("Enable Eye-Wink Controls")
+        self.chk_wink_actions.setChecked(True)
+        self.chk_wink_actions.stateChanged.connect(self.toggle_wink_actions)
+        
+        self.chk_yawn_alerts = QCheckBox("Enable Mouth Yawn Warning")
+        self.chk_yawn_alerts.setChecked(True)
+        self.chk_yawn_alerts.stateChanged.connect(self.toggle_yawn_alerts)
+        
+        self.chk_drowsy_alerts = QCheckBox("Enable Fatigue Alarm")
+        self.chk_drowsy_alerts.setChecked(True)
+        self.chk_drowsy_alerts.stateChanged.connect(self.toggle_drowsy_alerts)
+        
+        triggers_layout.addWidget(self.chk_wink_actions)
+        triggers_layout.addWidget(self.chk_yawn_alerts)
+        triggers_layout.addWidget(self.chk_drowsy_alerts)
+        layout.addWidget(triggers_group)
+        
+        # Info card
+        info_label = QLabel(
+            "==== BIOLOGICAL CONTROLS ====\n\n"
+            "• Right Wink: Cycle HUD theme colors\n"
+            "• Left Wink: Take instant camera snapshot\n"
+            "• Yawn: Trigger fatigue console warning\n"
+            "• Closed Eyes: Sound emergency dual-tone alarm"
+        )
+        info_label.setFont(QFont("Consolas", 9))
+        info_label.setStyleSheet("color: #DDAABB; background-color: rgba(255, 255, 255, 0.02); padding: 8px; border: 1px solid rgba(255, 255, 255, 0.05);")
+        layout.addWidget(info_label)
+        layout.addStretch()
+
+    def change_face_filter(self, filter_name):
+        self.thread.effects.face_filter_mode = filter_name
+        self.thread.audio.play_sound_async("ui_nav")
+
+    def toggle_wink_actions(self, state):
+        self.thread.enable_wink_actions = bool(state)
+        self.thread.audio.play_sound_async("ui_nav")
+
+    def toggle_yawn_alerts(self, state):
+        self.thread.enable_yawn_alerts = bool(state)
+        self.thread.audio.play_sound_async("ui_nav")
+
+    def toggle_drowsy_alerts(self, state):
+        self.thread.enable_drowsy_alerts = bool(state)
+        self.thread.audio.play_sound_async("ui_nav")
+
     def populate_plugins_tab(self):
         # Clear existing
         for i in reversed(range(self.plugins_scroll_layout.count())):
@@ -529,6 +630,13 @@ class MainWindow(QMainWindow):
         self.fps_label.setText(f"System FPS: {fps}")
         self.hands_label.setText(f"Active Hand Tracking Lock: {len(hands_data)}")
         
+        # Sync combobox theme with active theme from camera thread (for wink-based theme switching)
+        active_theme = self.thread.effects.current_theme
+        if self.combo_theme.currentText() != active_theme:
+            self.combo_theme.blockSignals(True)
+            self.combo_theme.setCurrentText(active_theme)
+            self.combo_theme.blockSignals(False)
+        
         # Update Face Telemetry
         if faces_data:
             face = faces_data[0]
@@ -539,6 +647,11 @@ class MainWindow(QMainWindow):
                 self.face_label.setStyleSheet("color: #FF0055; font-weight: bold;")
                 self.blink_label.setText("Blink Telemetry: DROWSINESS ALERT ACTIVE !!!")
                 self.blink_label.setStyleSheet("color: #FF0055; font-weight: bold; background-color: rgba(255, 0, 85, 0.1); border: 1px solid #FF0055; padding: 2px;")
+            elif face.get("yawning", False):
+                self.face_label.setText("Face Neural Lock: LOCKED - YAWN ALERT")
+                self.face_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+                self.blink_label.setText(f"Blink Telemetry: Yawning (Aspect Ratio: {face.get('yawn_ratio', 0.0):.2f})")
+                self.blink_label.setStyleSheet("color: #FFA500; font-weight: bold; border: none; background-color: transparent; padding: 0px;")
             else:
                 self.face_label.setText(f"Face Neural Lock: LOCKED (ID: {face['index']})")
                 self.face_label.setStyleSheet("color: #00FF66; font-weight: bold;")
