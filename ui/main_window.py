@@ -6,12 +6,14 @@ import time
 from PyQt6.QtWidgets import (
     QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, 
     QPushButton, QFrame, QTabWidget, QCheckBox, QSlider, 
-    QTextEdit, QGroupBox, QListWidget, QScrollArea, QListWidgetItem
+    QTextEdit, QGroupBox, QListWidget, QScrollArea, QListWidgetItem,
+    QComboBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QImage, QPixmap, QFont
 
 from detection.hand_tracker import HandDetector
+from detection.face_tracker import FaceDetector
 from gestures.recognizer import GestureRecognizer
 from effects.effects_engine import ProfessionalOverlayEngine
 from audio.audio_engine import AudioEngine
@@ -21,33 +23,34 @@ from plugins.manager import PluginManager
 from ui.styles import CYBERPUNK_STYLESHEET
 
 class CameraThread(QThread):
-    # Signals for frame and telemetry updates
+    # Signals for frame and telemetry updates (hands, fps, mouse status, action logs, faces)
     change_pixmap_signal = pyqtSignal(np.ndarray)
-    update_stats_signal = pyqtSignal(list, int, str, list)
+    update_stats_signal = pyqtSignal(list, int, str, list, list)
 
     def __init__(self, camera_id=0, max_hands=2, detection_con=0.8, track_con=0.8):
         super().__init__()
         self.camera_id = camera_id
         self._run_flag = True
         
-        # Detector & Core Utilities - tuned for high accuracy
+        # Detectors & Core Utilities
         self.detector = HandDetector(max_hands=max_hands, detection_con=detection_con, track_con=track_con)
+        self.face_detector = FaceDetector(max_faces=1, min_detection_con=0.5, min_tracking_con=0.5)
         self.recognizer = GestureRecognizer()
         self.fps_counter = FPSCounter()
         
         # Professional HUD & Audio Engines
         self.effects = ProfessionalOverlayEngine()
         self.audio = AudioEngine()
-        
-        # We disable audio by default for a silent, professional experience
-        self.audio.set_enabled(False) 
+        self.audio.set_enabled(False) # Silent professional by default
         
         self.virtual_mouse = VirtualMouse()
         self.plugin_manager = PluginManager()
         
-        # Toggle Switches
+        # Dynamic Configuration Controls
         self.enable_hud_overlays = True
         self.enable_basic_drawing = True
+        self.enable_face_hud = True
+        self.hand_hud_mode = "3D Hologram" # Toggle: "3D Hologram" or "Standard Brackets"
         self.multi_user_mode = True
 
     def run(self):
@@ -59,7 +62,7 @@ class CameraThread(QThread):
             cv2.putText(error_frame, "CRITICAL ERROR: CAMERA OFFLINE", (60, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             cv2.putText(error_frame, "Connect a USB camera and restart core engine.", (60, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 180, 255), 1)
             self.change_pixmap_signal.emit(error_frame)
-            self.update_stats_signal.emit([], 0, "Offline", ["[SYS] Vision sensors offline - check connection."])
+            self.update_stats_signal.emit([], 0, "Offline", ["[SYS] Vision sensors offline - check connection."], [])
             
             while self._run_flag:
                 self.msleep(500)
@@ -71,16 +74,16 @@ class CameraThread(QThread):
                 # Mirror effect for comfortable gesture mapping
                 frame = cv2.flip(frame, 1)
                 
-                # 1. Run Advanced Hand Landmarker (draws clean red tech skeleton lines if enabled)
+                # 1. Hand Tracking Core (draw clean tech skeleton nodes if enabled)
                 frame = self.detector.find_hands(frame, draw=self.enable_basic_drawing)
                 active_hands = self.detector.get_active_hands(frame)
                 
                 hands_data = []
                 action_logs = []
                 
-                # Render sleek bounding brackets and tracking reticles
+                # Render sleek hand HUD overlays (Standard Brackets or 3D Hologram)
                 if self.enable_hud_overlays and len(active_hands) > 0:
-                    frame = self.effects.process_hand_overlays(frame, active_hands)
+                    frame = self.effects.process_hand_overlays(frame, active_hands, mode=self.hand_hud_mode)
                 
                 # Check for simultaneous dual-hand combos
                 combo = self.recognizer.detect_two_hand_combo(active_hands)
@@ -133,6 +136,21 @@ class CameraThread(QThread):
                         if logs:
                             action_logs.extend(logs)
                 
+                # 2. Face Tracking & Pupil Gaze Core
+                active_faces = []
+                if self.enable_face_hud:
+                    active_faces = self.face_detector.find_faces(frame)
+                    frame = self.effects.process_face_overlays(frame, active_faces)
+                    
+                    # Log face blinks dynamically
+                    for face in active_faces:
+                        if face["left_blink"] and face["right_blink"]:
+                            action_logs.append(f"[SYS] NEURAL FEED: DUAL-BLINK DETECTED")
+                        elif face["left_blink"]:
+                            action_logs.append(f"[SYS] NEURAL FEED: LEFT-BLINK DETECTED")
+                        elif face["right_blink"]:
+                            action_logs.append(f"[SYS] NEURAL FEED: RIGHT-BLINK DETECTED")
+                
                 # 3. Handle Virtual Mouse (tracked primarily via hand 0 index tip)
                 mouse_status = "Inactive"
                 if self.virtual_mouse.enabled and len(active_hands) > 0:
@@ -145,7 +163,7 @@ class CameraThread(QThread):
                 fps = self.fps_counter.update()
                 
                 # Emit update signals
-                self.update_stats_signal.emit(hands_data, fps, mouse_status, action_logs)
+                self.update_stats_signal.emit(hands_data, fps, mouse_status, action_logs, active_faces)
                 self.change_pixmap_signal.emit(frame)
             else:
                 self.msleep(10)
@@ -157,19 +175,21 @@ class CameraThread(QThread):
         self.wait()
         if hasattr(self, 'detector'):
             self.detector.close()
+        if hasattr(self, 'face_detector'):
+            self.face_detector.close()
 
 
 class MainWindow(QMainWindow):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.setWindowTitle(config.get("app_name", "Cognitive AI HUD"))
-        self.setGeometry(100, 100, 1100, 750)
+        self.setWindowTitle(config.get("app_name", "Neural Motion Vision Core"))
+        self.setGeometry(100, 100, 1150, 780)
         self.setStyleSheet(CYBERPUNK_STYLESHEET)
         
         self.init_ui()
         
-        # Start core background camera thread with high accuracy thresholds
+        # Start core background camera thread
         self.thread = CameraThread(
             camera_id=self.config.get("camera_id", 0),
             max_hands=self.config.get("max_hands", 2),
@@ -184,7 +204,7 @@ class MainWindow(QMainWindow):
         
         # Load Dynamic Plugins
         self.populate_plugins_tab()
-        self.log_system_event("System Online. Red-themed Cyber-Tech Core initialized.")
+        self.log_system_event("System Online. Cyber-Tech Motion & Gaze Core initialized.")
 
     def init_ui(self):
         central_widget = QWidget()
@@ -199,13 +219,13 @@ class MainWindow(QMainWindow):
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setMinimumSize(640, 480)
-        self.video_label.setStyleSheet("border: 2px solid #FF0055; background-color: #000000; border-radius: 10px;")
+        self.video_label.setStyleSheet("border: 1px solid #FF0055; background-color: #000000; border-radius: 8px;")
         left_layout.addWidget(self.video_label, stretch=4)
         
         # Bezel indicator bar
-        self.lbl_sub_status = QLabel("HUD STATUS: SENSORS ARMED // TRACKING LOCK: ACTIVE")
+        self.lbl_sub_status = QLabel("HUD STATUS: SENSORS ARMED // MOTION & GAZE: DETECTING")
         self.lbl_sub_status.setFont(QFont("Consolas", 10))
-        self.lbl_sub_status.setStyleSheet("color: #FF5500; padding: 5px; border: 1px solid rgba(255, 0, 85, 0.3); border-radius: 4px; background-color: rgba(30,0,5,0.4);")
+        self.lbl_sub_status.setStyleSheet("color: #FF2B6D; padding: 6px; border: 1px solid rgba(255, 0, 85, 0.2); border-radius: 4px; background-color: rgba(12,4,8,0.6);")
         self.lbl_sub_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         left_layout.addWidget(self.lbl_sub_status)
         
@@ -214,13 +234,13 @@ class MainWindow(QMainWindow):
         # Right Panel (Tabs panel)
         right_panel = QFrame()
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(10, 10, 10, 10)
+        right_layout.setContentsMargins(12, 12, 12, 12)
         
         # Cyber title
-        title_label = QLabel("COGNITIVE AI HUD\nNEURAL MOTION CORE v3.1")
-        title_label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
+        title_label = QLabel("NEURAL MOTION CORE\nHUD PLATFORM v4.0")
+        title_label.setFont(QFont("Consolas", 16, QFont.Weight.Bold))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("color: #FF0055; margin-bottom: 10px; border: none; font-weight: 900;")
+        title_label.setStyleSheet("color: #FF0055; margin-bottom: 12px; border: none; font-weight: 900;")
         right_layout.addWidget(title_label)
         
         # Control panel tabs
@@ -274,16 +294,20 @@ class MainWindow(QMainWindow):
         stats_layout = QVBoxLayout(stats_group)
         self.fps_label = QLabel("FPS: 0")
         self.hands_label = QLabel("Hands Detected: 0")
-        for lbl in [self.fps_label, self.hands_label]:
-            lbl.setFont(QFont("Consolas", 12))
+        self.face_label = QLabel("Face Neural Lock: Offline")
+        self.blink_label = QLabel("Blink Telemetry: L: Normal | R: Normal")
+        self.gaze_label = QLabel("Pupil Tracking: L: - | R: -")
+        
+        for lbl in [self.fps_label, self.hands_label, self.face_label, self.blink_label, self.gaze_label]:
+            lbl.setFont(QFont("Consolas", 11))
             stats_layout.addWidget(lbl)
         layout.addWidget(stats_group)
         
         # Hands list
-        hands_group = QGroupBox("ACTIVE ENTITIES")
+        hands_group = QGroupBox("ACTIVE MOTION ENTITIES")
         hands_layout = QVBoxLayout(hands_group)
         self.hands_list = QListWidget()
-        self.hands_list.setMinimumHeight(100)
+        self.hands_list.setMinimumHeight(80)
         hands_layout.addWidget(self.hands_list)
         layout.addWidget(hands_group)
         
@@ -292,7 +316,7 @@ class MainWindow(QMainWindow):
         console_layout = QVBoxLayout(console_group)
         self.console = QTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(180)
+        self.console.setMinimumHeight(150)
         console_layout.addWidget(self.console)
         layout.addWidget(console_group)
 
@@ -340,6 +364,19 @@ class MainWindow(QMainWindow):
     def setup_visuals_tab(self):
         layout = QVBoxLayout(self.tab_visuals)
         
+        # Cyber theme controller
+        theme_group = QGroupBox("HUD AESTHETIC PALETTE")
+        theme_layout = QVBoxLayout(theme_group)
+        
+        lbl_theme = QLabel("Active Color Scheme:")
+        theme_layout.addWidget(lbl_theme)
+        
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItems(["Red Alert", "Matrix Green", "Synthwave"])
+        self.combo_theme.currentTextChanged.connect(self.change_hud_theme)
+        theme_layout.addWidget(self.combo_theme)
+        layout.addWidget(theme_group)
+        
         fx_group = QGroupBox("HUD OVERLAY SETTINGS")
         fx_layout = QVBoxLayout(fx_group)
         
@@ -353,7 +390,24 @@ class MainWindow(QMainWindow):
         self.chk_landmarks.stateChanged.connect(self.toggle_landmarks)
         fx_layout.addWidget(self.chk_landmarks)
         
+        self.chk_face_hud = QCheckBox("Render Face & Pupil Mesh Overlay")
+        self.chk_face_hud.setChecked(True)
+        self.chk_face_hud.stateChanged.connect(self.toggle_face_hud)
+        fx_layout.addWidget(self.chk_face_hud)
+        
         layout.addWidget(fx_group)
+        
+        mode_group = QGroupBox("MOTION HUD OVERLAY STYLE")
+        mode_layout = QVBoxLayout(mode_group)
+        
+        lbl_mode = QLabel("Hand HUD Mode:")
+        mode_layout.addWidget(lbl_mode)
+        
+        self.combo_hud_mode = QComboBox()
+        self.combo_hud_mode.addItems(["3D Hologram", "Standard Brackets"])
+        self.combo_hud_mode.currentTextChanged.connect(self.change_hand_hud_mode)
+        mode_layout.addWidget(self.combo_hud_mode)
+        layout.addWidget(mode_group)
         
         multi_group = QGroupBox("DETECTION PARAMS")
         multi_layout = QVBoxLayout(multi_group)
@@ -373,7 +427,7 @@ class MainWindow(QMainWindow):
         audio_layout = QVBoxLayout(audio_group)
         
         self.chk_enable_audio = QCheckBox("Enable UI Sound Feedback")
-        self.chk_enable_audio.setChecked(False) # Disabled for a professional silent feel
+        self.chk_enable_audio.setChecked(False) 
         self.chk_enable_audio.stateChanged.connect(self.toggle_audio_engine)
         audio_layout.addWidget(self.chk_enable_audio)
         
@@ -426,7 +480,7 @@ class MainWindow(QMainWindow):
 
         for plugin in plugins:
             plugin_frame = QFrame()
-            plugin_frame.setStyleSheet("border: 1px solid #662222; background-color: rgba(10,3,5,0.7); padding: 8px; margin-bottom: 5px;")
+            plugin_frame.setStyleSheet("border: 1px solid #441122; background-color: rgba(12,4,8,0.9); padding: 8px; margin-bottom: 5px;")
             frame_layout = QVBoxLayout(plugin_frame)
             
             header = QHBoxLayout()
@@ -434,7 +488,7 @@ class MainWindow(QMainWindow):
             chk.setChecked(plugin.enabled)
             chk.stateChanged.connect(lambda state, p=plugin: self.toggle_plugin_state(p, state))
             chk.setFont(QFont("Consolas", 12, QFont.Weight.Bold))
-            chk.setStyleSheet("color: #FF3366;")
+            chk.setStyleSheet("color: #FF2B6D;")
             
             trigger_lbl = QLabel(f"[{plugin.gesture_trigger}]")
             trigger_lbl.setStyleSheet("color: #FF5500; font-weight: bold;")
@@ -463,14 +517,44 @@ class MainWindow(QMainWindow):
         scaled_pixmap = qt_format.scaled(640, 480, Qt.AspectRatioMode.KeepAspectRatio)
         self.video_label.setPixmap(QPixmap.fromImage(scaled_pixmap))
 
-    @pyqtSlot(list, int, str, list)
-    def update_stats(self, hands_data, fps, mouse_status, action_logs):
+    @pyqtSlot(list, int, str, list, list)
+    def update_stats(self, hands_data, fps, mouse_status, action_logs, faces_data):
         self.fps_label.setText(f"System FPS: {fps}")
-        self.hands_label.setText(f"Active Tracking Lock: {len(hands_data)}")
+        self.hands_label.setText(f"Active Hand Tracking Lock: {len(hands_data)}")
         
+        # Update Face Telemetry
+        if faces_data:
+            face = faces_data[0]
+            self.face_label.setText(f"Face Neural Lock: LOCKED (ID: {face['index']})")
+            self.face_label.setStyleSheet("color: #00FF66; font-weight: bold;")
+            
+            blink_l = "BLINK!" if face["left_blink"] else "Normal"
+            blink_r = "BLINK!" if face["right_blink"] else "Normal"
+            self.blink_label.setText(f"Blink Telemetry: L: {blink_l} | R: {blink_r}")
+            if face["left_blink"] or face["right_blink"]:
+                self.blink_label.setStyleSheet("color: #FF0055; font-weight: bold;")
+            else:
+                self.blink_label.setStyleSheet("color: #DDAABB;")
+                
+            if face["left_pupil"] and face["right_pupil"]:
+                lx, ly = face["left_pupil"]
+                rx, ry = face["right_pupil"]
+                self.gaze_label.setText(f"Pupil Tracking: L: [{lx},{ly}] | R: [{rx},{ry}]")
+                self.gaze_label.setStyleSheet("color: #00FFFF;")
+            else:
+                self.gaze_label.setText("Pupil Tracking: Gaze Lock Scanning...")
+                self.gaze_label.setStyleSheet("color: #FF5500;")
+        else:
+            self.face_label.setText("Face Neural Lock: Offline")
+            self.face_label.setStyleSheet("color: #FF0055;")
+            self.blink_label.setText("Blink Telemetry: L: Offline | R: Offline")
+            self.blink_label.setStyleSheet("color: #DDAABB;")
+            self.gaze_label.setText("Pupil Tracking: L: Offline | R: Offline")
+            self.gaze_label.setStyleSheet("color: #DDAABB;")
+            
         self.lbl_mouse_status.setText(f"MOUSE STATE: {mouse_status.upper()}")
         if "Click" in mouse_status:
-            self.lbl_mouse_status.setStyleSheet("color: #00FF00; font-weight: bold;")
+            self.lbl_mouse_status.setStyleSheet("color: #00FF66; font-weight: bold;")
         elif "Moving" in mouse_status:
             self.lbl_mouse_status.setStyleSheet("color: #FF5500; font-weight: bold;")
         else:
@@ -482,7 +566,7 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(item_text)
             item.setFont(QFont("Consolas", 10))
             if hand['label'] == "Left":
-                item.setForeground(Qt.GlobalColor.yellow) # Orange-Yellow
+                item.setForeground(Qt.GlobalColor.yellow)
             else:
                 item.setForeground(Qt.GlobalColor.red)
             self.hands_list.addItem(item)
@@ -496,7 +580,7 @@ class MainWindow(QMainWindow):
         sb = self.console.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    # Control Toggles
+    # Control Toggles & Slots
     def toggle_virtual_mouse(self, state):
         enabled = (state == 2)
         self.thread.virtual_mouse.set_enabled(enabled)
@@ -515,6 +599,19 @@ class MainWindow(QMainWindow):
         enabled = (state == 2)
         self.thread.enable_basic_drawing = enabled
         self.log_system_event(f"Tech Skeleton Joints {'ENABLED' if enabled else 'DISABLED'}.")
+
+    def toggle_face_hud(self, state):
+        enabled = (state == 2)
+        self.thread.enable_face_hud = enabled
+        self.log_system_event(f"Face & Pupil HUD overlays {'ENABLED' if enabled else 'DISABLED'}.")
+
+    def change_hud_theme(self, theme_name):
+        self.thread.effects.set_theme(theme_name)
+        self.log_system_event(f"Active HUD visual theme preset set to: {theme_name.upper()}.")
+
+    def change_hand_hud_mode(self, mode_name):
+        self.thread.hand_hud_mode = mode_name
+        self.log_system_event(f"Hand HUD overlay style changed to: {mode_name.upper()}.")
 
     def toggle_multi_user(self, state):
         enabled = (state == 2)
@@ -538,11 +635,11 @@ class MainWindow(QMainWindow):
         self.log_system_event("Dynamic plugins loaded successfully.")
 
     def recalibrate_fields(self):
-        self.log_system_event("Initiating sensor field recalibration... Hold hands in frame.")
-        self.lbl_sub_status.setText("HUD STATUS: RE-OPTIMIZING SENSOR FIELD...")
+        self.log_system_event("Initiating sensor field recalibration... Hold face and hands in frame.")
+        self.lbl_sub_status.setText("HUD STATUS: RE-OPTIMIZING SYSTEM SENSOR FIELDS...")
         time.sleep(0.1)
-        self.lbl_sub_status.setText("HUD STATUS: SENSORS ARMED // TRACKING LOCK: ACTIVE")
-        self.log_system_event("Recalibration complete. Alignment optimal.")
+        self.lbl_sub_status.setText("HUD STATUS: SENSORS ARMED // MOTION & GAZE: DETECTING")
+        self.log_system_event("Recalibration complete. Gaze locks & hand sensor coordinates aligned.")
 
     def closeEvent(self, event):
         self.log_system_event("Shutting down vision capturing threads...")

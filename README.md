@@ -1,75 +1,124 @@
-# Hand detections AI
-A modern, AI-powered hand detection and gesture recognition desktop application built with Python. Designed with a futuristic cyberpunk aesthetic and optimized for high performance and real-time processing.
+# Nexus Motion & Neural Gaze Core (Hand & Face Detection AI)
 
-##  Features
-- **Real-Time Hand Detection**: Ultra-fast 21-point hand landmark tracking using MediaPipe.
-- **Gesture Recognition**: Built-in support for Peace, Thumbs Up, Fist, Open Palm, Pointing, and OK gestures.
-- **Cyberpunk UI**: Modern PyQt6 interface with neon accents, custom styling, and a glassmorphism feel.
-- **Asynchronous Processing**: Thread-safe camera handling ensures the UI remains responsive and fluid.
-- **Configurable**: Easily adjust settings through the `configs/settings.json` file.
+A state-of-the-art, high-performance cognitive AI desktop application that tracks hand gestures, face wireframes, and eye pupil gaze telemetry in real-time. Designed with a breathtaking cyberpunk aesthetic, custom glassmorphism styling, and premium interactive heads-up displays (HUD).
 
-##  Tech Stack
+![Holographic HUD Preview](configs/cyber_hud_preview.png) *(Placeholder for live visual rendering)*
+
+---
+
+## ⚡ Next-Gen Features
+
+### 1. 👁️ Neural Face & Pupil Gaze Tracking
+- **Interactive Cyber Face Mesh**: Renders a high-tech glowing wireframe over the user's face, tracking the eyebrows, mouth, eyes, and facial contour.
+- **Pupil Iris Lock-On**: Dynamic concentric target lock-on crosshairs follow the pupils' movements in real-time.
+- **Blink Telemetry Detection**: Asynchronous left and right blink analysis logs activity to the console feed dynamically.
+- **EMA Landmark Smoothing**: Sophisticated Exponential Moving Average filtering eliminates sensor jitter for high-precision locks.
+
+### 2. 🔮 3D Holographic Hand HUD
+- **3D Spinning Holograms**: Renders a perspective-projected 3D rotating wireframe cube hovering gracefully above the palm center.
+- **Palm Telemetry Circles**: Glowing inner and outer segmented rings rotate in opposite directions based on real-time physics.
+- **Target Reticle Ticks**: Floating lock-on crosshairs trace the tip of the index pointer.
+- **Cyber Data Telemetry Cards**: Holographic connector lines draw a floating card displaying the active hand, detected gesture, 2D coordinates, and lock state.
+
+### 3. 🎨 Aesthetic Customizer & Palettes
+- **Hot-Swappable Cyber Themes**: Instant color palette switches between three premium presets:
+  - 🔴 **Red Alert**: Neon Crimson & Scarlet Red theme for tactical cyber-ops.
+  - 🟢 **Matrix Green**: Lime Green & Matrix Digital rain aesthetic.
+  - 🔵 **Synthwave**: Cyber Cyan & Synth Magenta for a futuristic retro-neon vibe.
+- **HUD Mode Selection**: Toggle the Hand HUD between the advanced **3D Hologram** and classic **Standard Brackets**.
+
+### 4. 🎛️ Premium Glassmorphism UI
+- Fully styled PyQt6 interface incorporating a dark, custom-drawn cyberpunk design.
+- Neon button animations, sleek scrollbars, styled checkboxes, glowing horizontal sliders, and high-contrast monospace indicators.
+
+---
+
+## 🛠️ Tech Stack
 - **Python 3.12+**
-- **OpenCV**: Camera capture and image processing.
-- **MediaPipe**: State-of-the-art hand tracking.
-- **PyQt6**: Professional desktop GUI framework.
-- **NumPy**: Matrix operations and data handling.
+- **OpenCV**: High-performance camera capture and image processing.
+- **MediaPipe**: Dual-core Hand Landmarker and Face Mesh vision processors.
+- **PyQt6**: Professional GPU-accelerated desktop GUI.
+- **NumPy**: Fast matrix operations for 3D projections and physics.
 
-##  Project Structure
+---
+
+## 📂 Project Structure
+
 ```
 Hand-and-Face-Detection/
 │
 ├── configs/
-│   └── settings.json        # Application configuration
+│   ├── settings.json         # Core settings and configuration
+│   └── hand_landmarker.task  # Pre-trained hand task model
+│
 ├── detection/
-│   └── hand_tracker.py      # Core AI detection module
+│   ├── hand_tracker.py       # Hand tracking core
+│   └── face_tracker.py       # NEW: Face Mesh & Pupil Gaze tracking core
+│
+├── effects/
+│   └── effects_engine.py     # UPGRADED: 3D Holograms, Face Overlays & Themes
+│
 ├── gestures/
-│   └── recognizer.py        # Logic for gesture classification
+│   └── recognizer.py         # Static and dynamic gesture classifications
+│
+├── plugins/
+│   ├── base_plugin.py        # Abstract plugin structure
+│   ├── manager.py            # Hot-swappable plugin loader
+│   ├── media_control.py      # Play/Pause gesture integration
+│   ├── volume_control.py     # Wave-based volume modifier
+│   ├── screenshot.py         # Snap-triggered screen capture
+│   └── web_browser.py        # Web launcher trigger
+│
 ├── ui/
-│   ├── main_window.py       # PyQt6 Main Window and Camera Thread
-│   └── styles.py            # Custom Cyberpunk CSS
+│   ├── main_window.py        # UPGRADED: Interactive HUD, Stats Dashboard
+│   └── styles.py             # UPGRADED: Cyberpunk QSS stylesheet
+│
 ├── utils/
-│   ├── fps_counter.py       # Performance monitoring
-│   └── logger.py            # Standardized logging
-├── main.py                  # Entry point
-└── requirements.txt         # Dependencies
+│   ├── overlays.py           # 3D projections & hologram geometry
+│   ├── fps_counter.py        # Telemetry FPS calculator
+│   └── logger.py             # High-reliability system logger
+│
+├── main.py                   # App bootloader entry point
+└── requirements.txt          # Python packages list
 ```
 
-##  Installation Guide
+---
 
-1. **Clone the repository**:
+## 🚀 Installation & Booting
+
+1. **Clone the Repository**:
    ```bash
    git clone <repository_url>
    cd Hand-and-Face-Detection
    ```
 
-2. **Create a virtual environment (Optional but recommended)**:
+2. **Initialize Virtual Environment**:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
+   venv\Scripts\activate  # On Windows
    ```
 
-3. **Install the requirements**:
+3. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-##  Usage
-Run the application using the following command:
-```bash
-python main.py
-```
-*Note: Make sure your webcam is connected and accessible.*
+4. **Boot the System**:
+   ```bash
+   python main.py
+   ```
 
-## Completed Core Features & Enhancements (Roadmap)
-- [x] **Multi-user hand interaction mode**: Seamlessly tracks multiple hands concurrently and provides gesture logging and positional coordinate telemetry for all active users.
-- [x] **Virtual mouse control using hand gestures**: native system cursor tracking using an optimized virtual touchpad mapping. Move index finger to glide; pinch index and middle tips close to perform clicks and drag-and-drop actions.
-- [x] **3D holographic visual overlays**: Cybernetic heads-up display rendering perspective-projected 3D wireframe cubes, telemetry concentric tracking circles, coordinate links, and target locked brackets.
-- [x] **Custom plugin system for adding new gesture actions**: Extensible, modular directory system where custom python scripts can register for specific gestures. Included plugins out of the box:
-  - `VolumeControlPlugin`: Adjust Windows volume up (Thumbs Up) or down (Thumbs Down).
-  - `MediaControlPlugin`: Toggle Media Play/Pause (OK Sign).
-  - `ScreenshotPlugin`: Take a cyber-snapshot of the camera frame (Fist).
-  - `WebBrowserPlugin`: Auto-launch project repository or URLs (Open Palm).
+---
 
-##  License
-This project is open-source and available under the MIT License.
+## 🕹️ Controls & Navigation
+
+### 🖱️ Virtual Air Mouse
+- **Move Cursor**: Point your index finger and glide.
+- **Left Click & Drag**: Pinch the tips of your index and middle fingers together.
+- **Release Click**: Extend or curl any other finger.
+
+### 🔌 Custom Plug-in Gesture Actions
+- 🔴 **Thumbs Up / Down**: Volume control plugin modifies windows master volume.
+- 🟢 **OK Gesture**: Media control toggles Play/Pause.
+- 🔵 **Fist Close**: Screenshot plugin saves a high-res capture to the `/screenshots` folder.
+- 🟡 **Open Palm**: Web browser launcher automatically opens the repository.
