@@ -31,6 +31,7 @@ class FaceDetector:
         # Exponential Moving Average (EMA) smoothing for face landmarks to prevent visual jitter
         self.smoothed_landmarks = {}
         self.smoothing_factor = 0.75 # Quick reaction with sleek dampening
+        self.closed_frames_history = {}
 
     def find_faces(self, img):
         """Processes the frame and returns smoothed face landmark coordinates and stats"""
@@ -88,6 +89,14 @@ class FaceDetector:
                     r_ratio = r_v_dist / max(1.0, r_h_dist)
                     right_blink = r_ratio < 0.15
                 
+                # Drowsiness / Fatigue Tracking: check if both eyes are closed consecutively
+                if left_blink and right_blink:
+                    self.closed_frames_history[face_idx] = self.closed_frames_history.get(face_idx, 0) + 1
+                else:
+                    self.closed_frames_history[face_idx] = 0
+                
+                drowsy = self.closed_frames_history[face_idx] >= 12 # Closed for ~0.4s consecutively
+                
                 # Check for pupil tracking (iris landmarks: 468-472 for left iris, 473-477 for right iris)
                 left_pupil = None
                 right_pupil = None
@@ -108,7 +117,9 @@ class FaceDetector:
                     "left_blink": left_blink,
                     "right_blink": right_blink,
                     "left_pupil": left_pupil,
-                    "right_pupil": right_pupil
+                    "right_pupil": right_pupil,
+                    "drowsy": drowsy,
+                    "drowsy_frames": self.closed_frames_history[face_idx]
                 })
                 
         return faces_list

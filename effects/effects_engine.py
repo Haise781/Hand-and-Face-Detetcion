@@ -147,6 +147,21 @@ class ProfessionalOverlayEngine:
         
         for face in active_faces:
             lm_list = face["lm_list"]
+            is_drowsy = face.get("drowsy", False)
+            
+            # Override theme colors to Tactical Alert Red if drowsiness is flagged
+            if is_drowsy:
+                colors = {
+                    "primary": (0, 0, 255),       # Crimson warning red
+                    "accent": (0, 0, 255),        # Scarlet warning red
+                    "highlight": (255, 255, 255), # High contrast white
+                    "text": (255, 255, 255)
+                }
+                # Render full-screen semi-transparent alert flash
+                cv2.rectangle(overlay, (0, 0), (w_img, h_img), (0, 0, 100), -1)
+                cv2.putText(overlay, "CRITICAL WARNING: USER DROWSINESS DETECTED // AUDIBLE ALERT ON", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv2.LINE_AA)
+            else:
+                colors = self.get_colors()
             
             # 1. Bounding Box & Target Brackets
             xs = [lm[1] for lm in lm_list]

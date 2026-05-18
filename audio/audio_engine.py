@@ -59,6 +59,16 @@ class AudioEngine:
             # low growl beep
             freqs = [180, 130]
             thread_target = lambda: self._play_sweep(freqs, 150)
+            
+        elif sound_type == "alarm":
+            # Flashing dual-tone high emergency alarm beep
+            freqs = [880, 660, 880, 660, 880]
+            thread_target = lambda: self._play_sweep(freqs, 100)
+            
+        elif sound_type == "lock_on":
+            # Rising crisp target locked-on notification sweep
+            freqs = [900, 1300, 1800]
+            thread_target = lambda: self._play_sweep(freqs, 30)
 
         if thread_target:
             t = threading.Thread(target=thread_target, daemon=True)

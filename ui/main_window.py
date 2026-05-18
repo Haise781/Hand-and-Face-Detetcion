@@ -52,6 +52,7 @@ class CameraThread(QThread):
         self.enable_face_hud = True
         self.hand_hud_mode = "3D Hologram" # Toggle: "3D Hologram" or "Standard Brackets"
         self.multi_user_mode = True
+        self.last_alarm_time = 0
 
     def run(self):
         cap = cv2.VideoCapture(self.camera_id)
@@ -142,9 +143,15 @@ class CameraThread(QThread):
                     active_faces = self.face_detector.find_faces(frame)
                     frame = self.effects.process_face_overlays(frame, active_faces)
                     
-                    # Log face blinks dynamically
+                    # Log face blinks dynamically and play alarm if user is drowsy
                     for face in active_faces:
-                        if face["left_blink"] and face["right_blink"]:
+                        if face.get("drowsy", False):
+                            now = time.time()
+                            if now - self.last_alarm_time > 1.5:
+                                self.audio.play_sound_async("alarm")
+                                self.last_alarm_time = now
+                                action_logs.append("[SYS] CRITICAL: USER FATIGUE ALERT ENGAGED")
+                        elif face["left_blink"] and face["right_blink"]:
                             action_logs.append(f"[SYS] NEURAL FEED: DUAL-BLINK DETECTED")
                         elif face["left_blink"]:
                             action_logs.append(f"[SYS] NEURAL FEED: LEFT-BLINK DETECTED")
@@ -525,16 +532,23 @@ class MainWindow(QMainWindow):
         # Update Face Telemetry
         if faces_data:
             face = faces_data[0]
-            self.face_label.setText(f"Face Neural Lock: LOCKED (ID: {face['index']})")
-            self.face_label.setStyleSheet("color: #00FF66; font-weight: bold;")
+            is_drowsy = face.get("drowsy", False)
             
-            blink_l = "BLINK!" if face["left_blink"] else "Normal"
-            blink_r = "BLINK!" if face["right_blink"] else "Normal"
-            self.blink_label.setText(f"Blink Telemetry: L: {blink_l} | R: {blink_r}")
-            if face["left_blink"] or face["right_blink"]:
-                self.blink_label.setStyleSheet("color: #FF0055; font-weight: bold;")
+            if is_drowsy:
+                self.face_label.setText("Face Neural Lock: WARNING - FATIGUE DETECTED")
+                self.face_label.setStyleSheet("color: #FF0055; font-weight: bold;")
+                self.blink_label.setText("Blink Telemetry: DROWSINESS ALERT ACTIVE !!!")
+                self.blink_label.setStyleSheet("color: #FF0055; font-weight: bold; background-color: rgba(255, 0, 85, 0.1); border: 1px solid #FF0055; padding: 2px;")
             else:
-                self.blink_label.setStyleSheet("color: #DDAABB;")
+                self.face_label.setText(f"Face Neural Lock: LOCKED (ID: {face['index']})")
+                self.face_label.setStyleSheet("color: #00FF66; font-weight: bold;")
+                blink_l = "BLINK!" if face["left_blink"] else "Normal"
+                blink_r = "BLINK!" if face["right_blink"] else "Normal"
+                self.blink_label.setText(f"Blink Telemetry: L: {blink_l} | R: {blink_r}")
+                if face["left_blink"] or face["right_blink"]:
+                    self.blink_label.setStyleSheet("color: #FF0055; font-weight: bold; border: none; background-color: transparent; padding: 0px;")
+                else:
+                    self.blink_label.setStyleSheet("color: #DDAABB; border: none; background-color: transparent; padding: 0px;")
                 
             if face["left_pupil"] and face["right_pupil"]:
                 lx, ly = face["left_pupil"]
