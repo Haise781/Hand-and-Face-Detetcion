@@ -29,6 +29,7 @@ class ProfessionalOverlayEngine:
         }
         self.current_theme = "Red Alert"
         self.holo_renderer = HolographicOverlays()
+        self.face_filter_mode = "Tactical Visor"
         
         # Facemesh Connection Indices for Futuristic Sci-Fi Wireframe Mesh
         self.face_oval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
@@ -219,7 +220,65 @@ class ProfessionalOverlayEngine:
                         cv2.ellipse(overlay, (cx, cy), (12, 12), angle, 0, 90, colors["accent"], 1, cv2.LINE_AA)
                         cv2.ellipse(overlay, (cx, cy), (12, 12), angle, 180, 270, colors["accent"], 1, cv2.LINE_AA)
                         
-            # 4. Neural Scan Telemetry Card
+            # 4. Futuristic Dynamic Cyber Filters (Selective AR Face Filters)
+            if self.face_filter_mode == "Tactical Visor" and len(lm_list) > 263:
+                # Eye outer points
+                p_left = lm_list[33]
+                p_right = lm_list[263]
+                mid_x = (p_left[1] + p_right[1]) // 2
+                mid_y = (p_left[2] + p_right[2]) // 2
+                
+                eye_dist = math.hypot(p_left[1] - p_right[1], p_left[2] - p_right[2])
+                v_w = int(eye_dist * 1.3)
+                v_h = int(eye_dist * 0.28)
+                
+                vx1, vy1 = mid_x - v_w // 2, mid_y - v_h // 2
+                vx2, vy2 = mid_x + v_w // 2, mid_y + v_h // 2
+                
+                cv2.line(overlay, (vx1, vy1), (vx2, vy1), colors["primary"], 1, cv2.LINE_AA)
+                cv2.line(overlay, (vx1, vy2), (vx2, vy2), colors["primary"], 1, cv2.LINE_AA)
+                
+                cv2.line(overlay, (vx1, vy1), (vx1, vy1 + 8), colors["primary"], 2, cv2.LINE_AA)
+                cv2.line(overlay, (vx2, vy1), (vx2, vy1 + 8), colors["primary"], 2, cv2.LINE_AA)
+                cv2.line(overlay, (vx1, vy2), (vx1, vy2 - 8), colors["primary"], 2, cv2.LINE_AA)
+                cv2.line(overlay, (vx2, vy2), (vx2, vy2 - 8), colors["primary"], 2, cv2.LINE_AA)
+                
+                t = time.time()
+                scan_y = int(vy1 + ((t * 40) % (vy2 - vy1)))
+                cv2.line(overlay, (vx1 + 10, scan_y), (vx2 - 10, scan_y), colors["accent"], 1, cv2.LINE_AA)
+                
+            elif self.face_filter_mode == "Neon Circuit" and len(lm_list) > 454:
+                # Draw glowing circuit pin nodes on face outline
+                nodes = [10, 4, 152, 234, 454, 70, 300]
+                for n in nodes:
+                    cx, cy = lm_list[n][1], lm_list[n][2]
+                    cv2.circle(overlay, (cx, cy), 4, colors["accent"], -1, cv2.LINE_AA)
+                    cv2.circle(overlay, (cx, cy), 8, colors["primary"], 1, cv2.LINE_AA)
+                
+                # Cyber circuit trace connections
+                connections = [(10, 70), (10, 300), (70, 234), (300, 454), (234, 152), (454, 152), (4, 10), (4, 152)]
+                for c1, c2 in connections:
+                    p1 = lm_list[c1]
+                    p2 = lm_list[c2]
+                    cv2.line(overlay, (p1[1], p1[2]), (p2[1], p2[2]), colors["primary"], 1, cv2.LINE_AA)
+                    # Glowing circuit pulse animation
+                    t = time.time()
+                    ratio = (t * 1.5) % 1.0
+                    tx = int(p1[1] + (p2[1] - p1[1]) * ratio)
+                    ty = int(p1[2] + (p2[2] - p1[2]) * ratio)
+                    cv2.circle(overlay, (tx, ty), 3, colors["highlight"], -1, cv2.LINE_AA)
+                    
+            elif self.face_filter_mode == "Lock Reticle" and len(lm_list) > 263:
+                # Square brackets target locks over eyes
+                for eye_limit in [lm_list[33], lm_list[263]]:
+                    ecx, ecy = eye_limit[1], eye_limit[2]
+                    # Draw eye target locks
+                    t = time.time()
+                    radius = int(22 + math.sin(t * 8) * 3)
+                    cv2.circle(overlay, (ecx, ecy), radius, colors["primary"], 1, cv2.LINE_AA)
+                    self.draw_hud_brackets(overlay, (ecx - radius, ecy - radius, radius * 2, radius * 2), colors["accent"], thickness=1, length=6)
+                        
+            # 5. Neural Scan Telemetry Card
             card_x = x_max + 15
             card_y = y_min + 30
             if card_x + 150 < w_img:
@@ -241,6 +300,15 @@ class ProfessionalOverlayEngine:
                     cv2.putText(overlay, f"GAZE LOCK: [{lx},{ly}]", (card_x + 5, card_y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, colors["primary"], 1, cv2.LINE_AA)
                 else:
                     cv2.putText(overlay, "GAZE LOCK: TRACKING...", (card_x + 5, card_y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1, cv2.LINE_AA)
+                    
+                # 6. Yawning Biological Target Lock
+                if face.get("yawning", False) and len(lm_list) > 14:
+                    mx = (lm_list[13][1] + lm_list[14][1]) // 2
+                    my = (lm_list[13][2] + lm_list[14][2]) // 2
+                    t = time.time()
+                    m_rad = int(25 + math.sin(t * 12) * 5)
+                    cv2.circle(overlay, (mx, my), m_rad, (0, 165, 255), 2, cv2.LINE_AA)
+                    cv2.putText(overlay, "YAWN ALERT", (mx - 32, my - m_rad - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 165, 255), 1, cv2.LINE_AA)
 
         # Alpha blend to make the HUD feel glowing and semi-transparent
         cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
