@@ -32,6 +32,9 @@ class FaceDetector:
         self.smoothed_landmarks = {}
         self.smoothing_factor = 0.75 # Quick reaction with sleek dampening
         self.closed_frames_history = {}
+        self.left_wink_frames = {}
+        self.right_wink_frames = {}
+        self.yawn_frames_history = {}
 
     def find_faces(self, img):
         """Processes the frame and returns smoothed face landmark coordinates and stats"""
@@ -97,6 +100,41 @@ class FaceDetector:
                 
                 drowsy = self.closed_frames_history[face_idx] >= 12 # Closed for ~0.4s consecutively
                 
+                # Wink Detection: one eye closed, one eye open
+                left_wink = left_blink and not right_blink
+                right_wink = right_blink and not left_blink
+                
+                if left_wink:
+                    self.left_wink_frames[face_idx] = self.left_wink_frames.get(face_idx, 0) + 1
+                else:
+                    self.left_wink_frames[face_idx] = 0
+                    
+                if right_wink:
+                    self.right_wink_frames[face_idx] = self.right_wink_frames.get(face_idx, 0) + 1
+                else:
+                    self.right_wink_frames[face_idx] = 0
+                
+                # Trigger exactly once when wink duration reaches 5 frames
+                left_wink_triggered = (self.left_wink_frames[face_idx] == 5)
+                right_wink_triggered = (self.right_wink_frames[face_idx] == 5)
+                
+                # Mouth Yawn Detection
+                yawning = False
+                yawn_ratio = 0.0
+                if len(lm_list) > 308:
+                    # Vertical distance: landmark 13 (upper inner lip) to 14 (lower inner lip)
+                    v_lip_dist = math.hypot(lm_list[13][1] - lm_list[14][1], lm_list[13][2] - lm_list[14][2])
+                    # Horizontal width: landmark 78 (left corner) to 308 (right corner)
+                    h_lip_dist = math.hypot(lm_list[78][1] - lm_list[308][1], lm_list[78][2] - lm_list[308][2])
+                    yawn_ratio = v_lip_dist / max(1.0, h_lip_dist)
+                    
+                    if yawn_ratio > 0.55:
+                        self.yawn_frames_history[face_idx] = self.yawn_frames_history.get(face_idx, 0) + 1
+                    else:
+                        self.yawn_frames_history[face_idx] = 0
+                        
+                    yawning = self.yawn_frames_history[face_idx] >= 15 # Yawning held for ~0.5s consecutively
+                
                 # Check for pupil tracking (iris landmarks: 468-472 for left iris, 473-477 for right iris)
                 left_pupil = None
                 right_pupil = None
@@ -119,7 +157,11 @@ class FaceDetector:
                     "left_pupil": left_pupil,
                     "right_pupil": right_pupil,
                     "drowsy": drowsy,
-                    "drowsy_frames": self.closed_frames_history[face_idx]
+                    "drowsy_frames": self.closed_frames_history[face_idx],
+                    "left_wink_triggered": left_wink_triggered,
+                    "right_wink_triggered": right_wink_triggered,
+                    "yawning": yawning,
+                    "yawn_ratio": yawn_ratio
                 })
                 
         return faces_list
